@@ -1,3 +1,4 @@
+import com.google.api.services.bigquery.model.TableRow;
 import com.google.cloud.bigquery.*;
 
 import java.sql.Connection;
@@ -51,7 +52,11 @@ public class Main {
                     "GROUP BY f.film_id, f.title, cat.name, f.description, f.release_year, f.language_id, " +
                     "f.rental_duration, f.rental_rate, f.length, f.replacement_cost, " +
                     "f.rating, f.last_update, f.special_features, f.fulltext, act.first_name, act.last_name " +
-                    "LIMIT 25;" );
+                    "LIMIT 250;" );
+
+            TableRow rowExample = new TableRow();
+            rowExample.set("film_id", rs.getInt("film_id"));
+
             while ( rs.next() ) {
                 int film_id = rs.getInt("film_id");
                 String title = rs.getString("title").toUpperCase();
@@ -78,38 +83,30 @@ public class Main {
                 String last_name = rs.getString("last_name");
 
                 final String INSERT_FILM =
-                        "INSERT INTO `york-cdf-start.final_taylor_bell.final-java` (film_id, title, name, " +
-                                "description, release_year, language_id, rental_duration, rental_rate, length, " +
-                                "replacement_cost, rating, last_update, special_features, fulltext, first_name, " +
-                                "last_name) VALUES (" + film_id + ", '" + title + "', '" + name + "', '" + description +
+                        "INSERT INTO `york-cdf-start.final_taylor_bell.final-java` VALUES (" + film_id + ", '" + title + "', '" + name + "', '" + description +
                                 "', " + release_year + ", " + language_id + ", " + rental_duration + ", " + rental_rate +
                                 ", " + length + ", " + replacement_cost + ", '" + rating + "', '" + last_update + "', '" +
                                 special_features + "', \"" + fulltext + "\", '" + first_name + "', '" + last_name + "');";
 
-                insert += INSERT_FILM;
+                // run BigQuery job
+                QueryJobConfiguration queryConfig =
+                        QueryJobConfiguration.newBuilder(INSERT_FILM).build();
+
+                Job queryJob = bigquery.create(JobInfo.newBuilder(queryConfig).build());
+                queryJob = queryJob.waitFor();
+                if (queryJob == null) {
+                    throw new Exception("job no longer exists");
+                }
+                // once the job is done, check if any error occured
+                if (queryJob.getStatus().getError() != null) {
+                    throw new Exception(queryJob.getStatus().getError().toString());
+                }
+
+                JobStatistics.QueryStatistics stats = queryJob.getStatistics();
+                Long rowsInserted = stats.getDmlStats().getInsertedRowCount();
+                System.out.println(title);
+                System.out.printf("%d row inserted\n", rowsInserted);
             }
-
-
-            // run BigQuery job
-            QueryJobConfiguration queryConfig =
-                    QueryJobConfiguration.newBuilder(insert).build();
-
-            Job queryJob = bigquery.create(JobInfo.newBuilder(queryConfig).build());
-            queryJob = queryJob.waitFor();
-            if (queryJob == null) {
-                throw new Exception("job no longer exists");
-            }
-            // once the job is done, check if any error occured
-            if (queryJob.getStatus().getError() != null) {
-                throw new Exception(queryJob.getStatus().getError().toString());
-            }
-
-            JobStatistics.QueryStatistics stats = queryJob.getStatistics();
-            Long rowsInserted = stats.getDmlStats().getInsertedRowCount();
-            System.out.printf("%d rows inserted\n", rowsInserted);
-
-
-
 
             rs.close();
             stmt.close();
